@@ -34,3 +34,15 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Deploy on AWS Amplify
+
+This repo includes `amplify.yml` for Amplify Hosting. The recommended flow is:
+
+1. In AWS Amplify Console, connect this GitHub repo and select `main`.
+2. Set env vars in Amplify (or rely on `amplify.yml` defaults):
+   - `SEARCH_SERVICE_BASE_URL`
+   - `PRODUCT_SERVICE_BASE_URL`
+3. Enable branch protection in GitHub to require 1 approval + `CI / build` before merge.
+
+Amplify will auto-deploy on each merge to `main`.

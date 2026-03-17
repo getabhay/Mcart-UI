@@ -9,6 +9,10 @@ applications:
         build:
           commands:
             - npm run build
+      env:
+        variables:
+          SEARCH_SERVICE_BASE_URL: http://localhost:8081
+          PRODUCT_SERVICE_BASE_URL: http://localhost:8080
       artifacts:
         baseDirectory: .next
         files:
