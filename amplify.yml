@@ -19,4 +19,6 @@ applications:
           - "**/*"
       cache:
         paths:
+          - .next/cache/**/*
           - node_modules/**/*
+          - ~/.npm/**/*
