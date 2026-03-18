@@ -8,6 +8,9 @@ applications:
             - npm ci
         build:
           commands:
+            - : > .env.production
+            - echo "SEARCH_SERVICE_BASE_URL=$SEARCH_SERVICE_BASE_URL" >> .env.production
+            - echo "PRODUCT_SERVICE_BASE_URL=$PRODUCT_SERVICE_BASE_URL" >> .env.production
             - npm run build
       env:
         variables:
