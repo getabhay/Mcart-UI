@@ -38,6 +38,7 @@ This repo includes `amplify.yml` for Amplify Hosting. The recommended flow is:
    - `SEARCH_SERVICE_BASE_URL`
    - `PRODUCT_SERVICE_BASE_URL`
    - Verify with `https://<your-app>/api/envcheck` after deploy.
+   - Note: build creates `.env.production`; it should stay in `.gitignore`.
 3. Enable branch protection in GitHub to require 1 approval + `CI / build` before merge.
 
 Amplify will auto-deploy on each merge to `main`.
