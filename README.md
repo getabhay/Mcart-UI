@@ -34,9 +34,10 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 This repo includes `amplify.yml` for Amplify Hosting. The recommended flow is:
 
 1. In AWS Amplify Console, connect this GitHub repo and select `main`.
-2. Set env vars in Amplify (or rely on `amplify.yml` defaults):
+2. Set env vars in Amplify:
    - `SEARCH_SERVICE_BASE_URL`
    - `PRODUCT_SERVICE_BASE_URL`
+   - Verify with `https://<your-app>/api/envcheck` after deploy.
 3. Enable branch protection in GitHub to require 1 approval + `CI / build` before merge.
 
 Amplify will auto-deploy on each merge to `main`.
