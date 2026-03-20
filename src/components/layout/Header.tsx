@@ -5,6 +5,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
+import { localSignIn, localSignUp, persistAuth, startSocialSignIn } from "@/lib/auth/client";
+import { clearStoredAuth, readStoredAuth } from "@/lib/auth/storage";
+import { getValidSessionFromStorage } from "@/lib/auth/token";
+import { APP_TEXT, toFriendlyAuthError } from "@/lib/constants/appText";
 
 /* -------------------- Types -------------------- */
 
@@ -28,7 +32,7 @@ type ColumnsModel = {
 
 type AuthState =
   | { isLoggedIn: false }
-  | { isLoggedIn: true; email: string; displayName: string };
+  | { isLoggedIn: true; email: string; displayName: string; provider: "LOCAL" | "GOOGLE" | "FACEBOOK" };
 
 type SuggestResponse = {
   q?: string;
@@ -187,42 +191,24 @@ function isValidEmail(value: string): boolean {
 
 /* -------------------- Auth (UI-only) -------------------- */
 
-const AUTH_KEY = "mcart_auth_v1";
 const CART_COUNT_KEY = "mcart_cart_count_v1";
-const DUMMY_EMAIL = "user@mcart.com";
-const DUMMY_PASS = "test@123";
 
 function readAuth(): AuthState {
-  if (typeof window === "undefined") return { isLoggedIn: false };
-  const raw = window.localStorage.getItem(AUTH_KEY);
-  if (!raw) return { isLoggedIn: false };
-
   try {
-    const parsed = JSON.parse(raw) as Partial<AuthState>;
-    if (parsed && typeof parsed === "object" && "isLoggedIn" in parsed && parsed.isLoggedIn === true) {
-      const email =
-        typeof (parsed as { email?: unknown }).email === "string"
-          ? (parsed as { email: string }).email
-          : DUMMY_EMAIL;
-      const displayName =
-        typeof (parsed as { displayName?: unknown }).displayName === "string"
-          ? (parsed as { displayName: string }).displayName
-          : "User";
-      return { isLoggedIn: true, email, displayName };
-    }
+    getValidSessionFromStorage();
   } catch {
-    // ignore
+    clearStoredAuth();
+    return { isLoggedIn: false };
   }
-  return { isLoggedIn: false };
-}
 
-function writeAuth(a: AuthState) {
-  if (typeof window === "undefined") return;
-  if (!a.isLoggedIn) {
-    window.localStorage.removeItem(AUTH_KEY);
-    return;
-  }
-  window.localStorage.setItem(AUTH_KEY, JSON.stringify(a));
+  const auth = readStoredAuth();
+  if (!auth.isLoggedIn) return { isLoggedIn: false };
+  return {
+    isLoggedIn: true,
+    email: auth.email,
+    displayName: auth.displayName,
+    provider: auth.provider,
+  };
 }
 
 function readCartCount(): number {
@@ -449,7 +435,16 @@ export default function Header() {
 
   /* auth */
   const [auth, setAuth] = useState<AuthState>({ isLoggedIn: false });
-  useEffect(() => setAuth(readAuth()), []);
+  useEffect(() => {
+    const syncAuth = () => setAuth(readAuth());
+    syncAuth();
+    window.addEventListener("storage", syncAuth);
+    window.addEventListener("mcart:auth-updated", syncAuth as EventListener);
+    return () => {
+      window.removeEventListener("storage", syncAuth);
+      window.removeEventListener("mcart:auth-updated", syncAuth as EventListener);
+    };
+  }, []);
 
   /* cart badge */
   useEffect(() => {
@@ -470,7 +465,9 @@ export default function Header() {
 
   /* account popup */
   const [acctHover, setAcctHover] = useState(false);
+  const [acctFocusWithin, setAcctFocusWithin] = useState(false);
   const acctCloseTimer = useRef<number | null>(null);
+  const acctPanelRef = useRef<HTMLDivElement | null>(null);
 
   function acctOpenNow() {
     if (acctCloseTimer.current != null) window.clearTimeout(acctCloseTimer.current);
@@ -479,11 +476,34 @@ export default function Header() {
   }
 
   function acctCloseSoon() {
+    if (acctFocusWithin) return;
     if (acctCloseTimer.current != null) window.clearTimeout(acctCloseTimer.current);
     acctCloseTimer.current = window.setTimeout(() => setAcctHover(false), 160);
   }
 
-  /* login (UI-only) */
+  function closeAccountPanel() {
+    if (acctCloseTimer.current != null) window.clearTimeout(acctCloseTimer.current);
+    acctCloseTimer.current = null;
+    setAcctFocusWithin(false);
+    setAcctHover(false);
+  }
+
+  function onAcctPanelFocusCapture() {
+    setAcctFocusWithin(true);
+    acctOpenNow();
+  }
+
+  function onAcctPanelBlurCapture() {
+    window.setTimeout(() => {
+      const panel = acctPanelRef.current;
+      const active = document.activeElement;
+      const stillInside = Boolean(panel && active && panel.contains(active));
+      setAcctFocusWithin(stillInside);
+      if (!stillInside) acctCloseSoon();
+    }, 0);
+  }
+
+  /* auth forms */
   const [authView, setAuthView] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -491,6 +511,9 @@ export default function Header() {
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPass, setSignupPass] = useState("");
   const [signupAccepted, setSignupAccepted] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [signupLoading, setSignupLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<"GOOGLE" | "FACEBOOK" | null>(null);
   const [loginErr, setLoginErr] = useState<string | null>(null);
   const [signupErr, setSignupErr] = useState<string | null>(null);
   const [signupOk, setSignupOk] = useState<string | null>(null);
@@ -501,51 +524,94 @@ export default function Header() {
     signupPass.trim().length > 0 &&
     signupAccepted;
 
-  function doLogin() {
-    const e = email.trim();
-    const pw = pass.trim();
-    if (e === DUMMY_EMAIL && pw === DUMMY_PASS) {
-      const next: AuthState = { isLoggedIn: true, email: e, displayName: "MCART User" };
-      writeAuth(next);
-      setAuth(next);
-      setLoginErr(null);
-      setAcctHover(false);
+  async function doLogin() {
+    setLoginErr(null);
+    setSignupOk(null);
+    setLoginLoading(true);
+    try {
+      const result = await localSignIn({ email: email.trim(), password: pass });
+      persistAuth(result);
+      setAuth(readAuth());
+      closeAccountPanel();
       setEmail("");
       setPass("");
-      return;
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : APP_TEXT.auth.errors.loginFailed;
+      setLoginErr(toFriendlyAuthError(message));
+    } finally {
+      setLoginLoading(false);
     }
-    setLoginErr("Invalid credentials. Try user@mcart.com / test@123");
   }
 
-  function doSignup() {
+  async function doSignup() {
     setSignupErr(null);
     setSignupOk(null);
     if (!signupName.trim()) {
-      setSignupErr("Please enter name.");
+      setSignupErr(APP_TEXT.signupPage.errors.enterName);
       return;
     }
     if (!signupEmail.trim()) {
-      setSignupErr("Please enter email.");
+      setSignupErr(APP_TEXT.signupPage.errors.enterEmail);
       return;
     }
     if (!signupPass.trim()) {
-      setSignupErr("Please enter password.");
+      setSignupErr(APP_TEXT.signupPage.errors.enterPassword);
       return;
     }
     if (!signupAccepted) {
-      setSignupErr("Please accept the checkbox to continue.");
+      setSignupErr(APP_TEXT.signupPage.errors.acceptCheckbox);
       return;
     }
-    setSignupOk("Sign up submitted successfully. Please login.");
-    setEmail(signupEmail.trim());
-    setPass("");
-    setAuthView("login");
+    setSignupLoading(true);
+    try {
+      const result = await localSignUp({
+        name: signupName.trim(),
+        email: signupEmail.trim(),
+        password: signupPass,
+      });
+      persistAuth(result);
+      setAuth(readAuth());
+      setSignupOk("Account created and signed in.");
+      closeAccountPanel();
+      setSignupName("");
+      setSignupEmail("");
+      setSignupPass("");
+      setSignupAccepted(false);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : APP_TEXT.auth.errors.signupFailed;
+      const friendly = toFriendlyAuthError(message);
+      setSignupErr(friendly);
+      if (friendly.includes("Please login instead") || friendly === APP_TEXT.auth.errors.accountExists) {
+        setAuthView("login");
+        setEmail(signupEmail.trim());
+        setPass("");
+        setSignupErr(null);
+        setSignupOk(APP_TEXT.headerAuth.signupSuccessForLogin);
+      }
+    } finally {
+      setSignupLoading(false);
+    }
+  }
+
+  function doSocialSignIn(provider: "GOOGLE" | "FACEBOOK") {
+    setLoginErr(null);
+    setSignupErr(null);
+    setSignupOk(null);
+    setSocialLoading(provider);
+    try {
+      startSocialSignIn(provider, pathname || "/");
+    } catch (e: unknown) {
+      setSocialLoading(null);
+      setLoginErr(e instanceof Error ? e.message : APP_TEXT.auth.errors.socialStartFailed);
+    }
   }
 
   function doLogout() {
-    writeAuth({ isLoggedIn: false });
+    clearStoredAuth();
     setAuth({ isLoggedIn: false });
-    setAcctHover(false);
+    closeAccountPanel();
+    window.dispatchEvent(new Event("mcart:auth-updated"));
+    router.replace("/");
   }
 
   /* search (PRODUCT-NAMES ONLY via /api/suggest) */
@@ -743,6 +809,14 @@ export default function Header() {
   useEffect(() => {
     if (hideCategoryNav && navOpen) setNavOpen(false);
   }, [hideCategoryNav, navOpen]);
+  useEffect(() => {
+    if (!navOpen) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [navOpen]);
 
   const [activeRootId, setActiveRootId] = useState<number | null>(null);
   const [pathIds, setPathIds] = useState<number[]>([]);
@@ -1067,44 +1141,47 @@ export default function Header() {
                 <span className="relative">
                   <IconUser />
                 </span>
-                <span className="leading-none">{auth.isLoggedIn ? "Profile" : "Login"}</span>
+                <span className="leading-none">{auth.isLoggedIn ? "Profile" : APP_TEXT.headerAuth.tabs.login}</span>
               </span>
             </div>
 
             {acctHover ? (
               <div
-                className="absolute right-0 top-[calc(100%+10px)] z-[110] w-[330px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl
+                ref={acctPanelRef}
+                className="absolute right-0 top-[calc(100%+10px)] z-[110] w-[360px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl
                            backdrop-blur-0 bg-opacity-100
                            dark:border-white/10 dark:bg-[#0E141B]"
                 onMouseEnter={acctOpenNow}
                 onMouseLeave={acctCloseSoon}
+                onFocusCapture={onAcctPanelFocusCapture}
+                onBlurCapture={onAcctPanelBlurCapture}
               >
-                <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-white/10 dark:bg-[#0B1118]">
-                  <div className="text-sm font-extrabold text-gray-900 dark:text-gray-100">
-                    {auth.isLoggedIn ? `Hi, ${auth.displayName}` : "Welcome"}
+                <div className="border-b border-gray-200 bg-gradient-to-r from-amber-50 via-white to-sky-50 px-4 py-3 dark:border-white/10 dark:from-[#101a24] dark:via-[#0B1118] dark:to-[#0f1a22]">
+                  <div className="text-sm font-black tracking-tight text-gray-900 dark:text-gray-100">
+                    {auth.isLoggedIn ? `Hi, ${auth.displayName}` : APP_TEXT.headerAuth.title.welcome}
                   </div>
-                  <div className="text-xs text-gray-700 dark:text-gray-300">
-                    {auth.isLoggedIn ? `Email: ${auth.email}` : "Login to access orders, wishlist & more"}
+                  <div className="mt-0.5 text-xs text-gray-700 dark:text-gray-300">
+                    {auth.isLoggedIn ? `Email: ${auth.email}` : APP_TEXT.headerAuth.subtitle.loginPrompt}
                   </div>
                 </div>
 
                 <div className="p-4">
                   {!auth.isLoggedIn ? (
-                    <div className="space-y-2">
-                      <div className="mb-1 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-white/10 dark:bg-[#0B1118]">
+                    <div className="space-y-2.5">
+                      <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-white/10 dark:bg-[#0B1118]">
                         <button
                           type="button"
-                          className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${authView === "login" ? "bg-white text-gray-900 dark:bg-white dark:text-black" : "text-gray-700 dark:text-gray-200"}`}
+                          className={`rounded-lg px-2 py-2 text-xs font-bold transition ${authView === "login" ? "bg-white text-gray-900 shadow-sm dark:bg-white dark:text-black" : "text-gray-700 hover:bg-white/60 dark:text-gray-200 dark:hover:bg-white/10"}`}
                           onClick={() => setAuthView("login")}
                         >
-                          Login
+                          {APP_TEXT.headerAuth.tabs.login}
                         </button>
                         <button
                           type="button"
-                          className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${authView === "signup" ? "bg-white text-gray-900 dark:bg-white dark:text-black" : "text-gray-700 dark:text-gray-200"}`}
+                          className={`rounded-lg px-2 py-2 text-xs font-bold transition ${authView === "signup" ? "bg-white text-gray-900 shadow-sm dark:bg-white dark:text-black" : "text-gray-700 hover:bg-white/60 dark:text-gray-200 dark:hover:bg-white/10"}`}
                           onClick={() => setAuthView("signup")}
                         >
-                          Sign Up
+                          {APP_TEXT.headerAuth.tabs.signup}
                         </button>
                       </div>
 
@@ -1130,25 +1207,48 @@ export default function Header() {
 
                           <button
                             type="button"
-                            className="w-full rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-white/90"
+                            className="w-full rounded-xl bg-gradient-to-r from-gray-900 to-black px-3 py-2.5 text-sm font-bold text-white shadow-sm hover:from-black hover:to-black disabled:cursor-not-allowed disabled:opacity-60 dark:from-white dark:to-white dark:text-black"
                             onClick={doLogin}
-                            disabled={!loginReady}
+                            disabled={!loginReady || loginLoading}
                           >
-                            Login
+                            {loginLoading ? APP_TEXT.headerAuth.button.signingIn : APP_TEXT.headerAuth.button.login}
                           </button>
 
                           <button
                             type="button"
-                            className="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-center text-sm font-semibold text-gray-900 hover:bg-gray-50 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100 dark:hover:bg-white/10"
+                            className="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-center text-sm font-semibold text-gray-900 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100 dark:hover:bg-white/10"
                             onClick={() => setAuthView("signup")}
                           >
-                            Create account
+                            {APP_TEXT.headerAuth.button.createAccount}
                           </button>
 
-                          <div className="mt-2 text-[11px] text-gray-700 dark:text-gray-300">
-                            Dummy creds: <span className="font-semibold">user@mcart.com</span> /{" "}
-                            <span className="font-semibold">test@123</span>
+                          <div className="my-1 flex items-center gap-2">
+                            <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
+                            <span className="text-[11px] text-gray-600 dark:text-gray-300">{APP_TEXT.headerAuth.separator}</span>
+                            <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
                           </div>
+
+                          <button
+                            type="button"
+                            className="w-full rounded-xl border border-[#d7e7ff] bg-gradient-to-r from-[#f8fbff] to-[#eef5ff] px-3 py-2.5 text-sm font-bold text-[#163b76] transition hover:from-[#f0f7ff] hover:to-[#e7f1ff] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#2d4367] dark:bg-[#0B1118] dark:text-[#d2e3ff] dark:hover:bg-[#101927]"
+                            onClick={() => doSocialSignIn("GOOGLE")}
+                            disabled={socialLoading !== null}
+                          >
+                            {socialLoading === "GOOGLE"
+                              ? APP_TEXT.headerAuth.button.redirectingGoogle
+                              : APP_TEXT.headerAuth.button.continueGoogle}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="w-full rounded-xl border border-[#d7e7ff] bg-gradient-to-r from-[#f8fbff] to-[#eef5ff] px-3 py-2.5 text-sm font-bold text-[#163b76] transition hover:from-[#f0f7ff] hover:to-[#e7f1ff] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#2d4367] dark:bg-[#0B1118] dark:text-[#d2e3ff] dark:hover:bg-[#101927]"
+                            onClick={() => doSocialSignIn("FACEBOOK")}
+                            disabled={socialLoading !== null}
+                          >
+                            {socialLoading === "FACEBOOK"
+                              ? APP_TEXT.headerAuth.button.redirectingFacebook
+                              : APP_TEXT.headerAuth.button.continueFacebook}
+                          </button>
                         </>
                       ) : (
                         <>
@@ -1179,25 +1279,25 @@ export default function Header() {
                               onChange={(e) => setSignupAccepted(e.target.checked)}
                               className="h-4 w-4 rounded border-gray-300"
                             />
-                            I agree to Terms & Privacy Policy.
+                            {APP_TEXT.headerAuth.consent}
                           </label>
                           {signupErr ? <div className="text-xs text-red-600">{signupErr}</div> : null}
 
                           <button
                             type="button"
-                            className="w-full rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-white/90"
+                            className="w-full rounded-xl bg-gradient-to-r from-gray-900 to-black px-3 py-2.5 text-sm font-bold text-white shadow-sm hover:from-black hover:to-black disabled:cursor-not-allowed disabled:opacity-60 dark:from-white dark:to-white dark:text-black"
                             onClick={doSignup}
-                            disabled={!signupReady}
+                            disabled={!signupReady || signupLoading}
                           >
-                            Submit
+                            {signupLoading ? APP_TEXT.headerAuth.button.creating : APP_TEXT.headerAuth.button.submit}
                           </button>
 
                           <button
                             type="button"
-                            className="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-center text-sm font-semibold text-gray-900 hover:bg-gray-50 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100 dark:hover:bg-white/10"
+                            className="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-center text-sm font-semibold text-gray-900 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100 dark:hover:bg-white/10"
                             onClick={() => setAuthView("login")}
                           >
-                            Back to Login
+                            {APP_TEXT.headerAuth.button.backToLogin}
                           </button>
                         </>
                       )}
@@ -1219,7 +1319,7 @@ export default function Header() {
                             key={item.label}
                             href={item.href}
                             className="flex items-center justify-between rounded-xl px-3 py-2 text-sm text-gray-900 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-white/5"
-                            onClick={() => setAcctHover(false)}
+                            onClick={closeAccountPanel}
                           >
                             <span>{item.label}</span>
                             <span className="text-gray-400 dark:text-gray-500">
@@ -1257,6 +1357,41 @@ export default function Header() {
               </div>
             ) : null}
           </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-200 bg-white dark:border-white/10 dark:bg-[#0E141B] md:hidden">
+        <div className="mx-auto grid max-w-7xl grid-cols-3 gap-2 px-3 py-2">
+          <Link
+            href={auth.isLoggedIn ? "/profile" : "/signup"}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-900 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+            onClick={() => {
+              closeAccountPanel();
+              setNavOpen(false);
+            }}
+          >
+            <IconUser />
+            <span>{auth.isLoggedIn ? "Profile" : APP_TEXT.headerAuth.tabs.login}</span>
+          </Link>
+          <Link
+            href="/wishlist"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-900 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+          >
+            <IconHeart />
+            <span>Wishlist</span>
+          </Link>
+          <Link
+            href="/cart"
+            className="relative flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-900 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+          >
+            <IconBag />
+            <span>Cart</span>
+            {cartCount > 0 ? (
+              <span className="absolute right-2 top-1 rounded-full bg-black px-1.5 py-0.5 text-[10px] font-bold text-white dark:bg-white dark:text-black">
+                {cartCount}
+              </span>
+            ) : null}
+          </Link>
         </div>
       </div>
 
@@ -1422,9 +1557,15 @@ export default function Header() {
       ) : null}
 
       {!hideCategoryNav && navOpen ? (
-        <div className="border-t border-gray-200 bg-white dark:border-white/10 dark:bg-[#0E141B] md:hidden">
-          <div className="mx-auto max-w-7xl px-4 py-4">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-[160] md:hidden">
+          <button
+            type="button"
+            aria-label="Close menu overlay"
+            className="absolute inset-0 bg-black/45"
+            onClick={() => setNavOpen(false)}
+          />
+          <div className="absolute inset-y-0 left-0 w-full max-w-md overflow-y-auto border-r border-gray-200 bg-white dark:border-white/10 dark:bg-[#0E141B]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-[#0E141B]/95">
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Categories</div>
               <button
                 type="button"
@@ -1435,7 +1576,7 @@ export default function Header() {
               </button>
             </div>
 
-            <div className="mt-4 space-y-3">
+            <div className="space-y-3 p-4">
               {catRoots.map((root) => (
                 <details key={root.id} className="rounded-xl border border-gray-200 p-3 dark:border-white/10">
                   <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">
