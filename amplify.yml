@@ -5,7 +5,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm ci
+            - npm ci --prefer-offline --no-audit --cache ~/.npm
         build:
           commands:
             - echo "" > .env.production
