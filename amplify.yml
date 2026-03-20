@@ -11,6 +11,14 @@ applications:
             - echo "" > .env.production
             - echo "SEARCH_SERVICE_BASE_URL=$SEARCH_SERVICE_BASE_URL" >> .env.production
             - echo "PRODUCT_SERVICE_BASE_URL=$PRODUCT_SERVICE_BASE_URL" >> .env.production
+            - echo "COGNITO_REGION=$COGNITO_REGION" >> .env.production
+            - echo "COGNITO_CLIENT_ID=$COGNITO_CLIENT_ID" >> .env.production
+            - echo "COGNITO_CLIENT_SECRET=$COGNITO_CLIENT_SECRET" >> .env.production
+            - echo "COGNITO_DOMAIN=$COGNITO_DOMAIN" >> .env.production
+            - echo "COGNITO_REDIRECT_URI=$COGNITO_REDIRECT_URI" >> .env.production
+            - echo "NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID" >> .env.production
+            - echo "NEXT_PUBLIC_COGNITO_DOMAIN=$NEXT_PUBLIC_COGNITO_DOMAIN" >> .env.production
+            - echo "NEXT_PUBLIC_COGNITO_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_REDIRECT_URI" >> .env.production
             - npm run build
       env:
         variables:
