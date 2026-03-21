@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getValidSessionFromStorage } from "@/lib/auth/token";
 import { clearStoredAuth, readStoredAuth, readStoredTokens, writeStoredAuth, writeStoredTokens } from "@/lib/auth/storage";
-import { APP_TEXT, toFriendlyProfileError } from "@/lib/constants/appText";
+import { APP_TEXT, toFriendlyAuthError, toFriendlyProfileError } from "@/lib/constants/appText";
 import { useRouter } from "next/navigation";
 
 type BackendProfile = {
@@ -184,7 +184,7 @@ export default function ProfilePage() {
     ) {
       return APP_TEXT.profilePage.errors.incorrectCurrentPassword;
     }
-    return message;
+    return toFriendlyAuthError(message);
   }
 
   useEffect(() => {
@@ -595,7 +595,7 @@ export default function ProfilePage() {
                   onChange={(e) => setPwd((prev) => ({ ...prev, confirmPassword: e.target.value }))}
                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-300 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
                 />
-                {pwdErr ? <p className="text-xs text-red-600 dark:text-red-400">{pwdErr}</p> : null}
+                {pwdErr ? <p className="text-xs whitespace-pre-line text-red-600 dark:text-red-400">{pwdErr}</p> : null}
                 {pwdMsg ? <p className="text-xs text-green-700 dark:text-green-400">{pwdMsg}</p> : null}
                 <div className="grid grid-cols-2 gap-2">
                   <button

@@ -1212,7 +1212,7 @@ export default function Header() {
                             onChange={(e) => setPass(e.target.value)}
                           />
 
-                          {loginErr ? <div className="text-xs text-red-600">{loginErr}</div> : null}
+                          {loginErr ? <div className="text-xs whitespace-pre-line text-red-600">{loginErr}</div> : null}
                           {signupOk ? <div className="text-xs text-green-700 dark:text-green-400">{signupOk}</div> : null}
 
                           <button
@@ -1291,7 +1291,7 @@ export default function Header() {
                             />
                             {APP_TEXT.headerAuth.consent}
                           </label>
-                          {signupErr ? <div className="text-xs text-red-600">{signupErr}</div> : null}
+                          {signupErr ? <div className="text-xs whitespace-pre-line text-red-600">{signupErr}</div> : null}
 
                           <button
                             type="button"
