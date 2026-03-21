@@ -609,6 +609,16 @@ export default function Header() {
   function doLogout() {
     clearStoredAuth();
     setAuth({ isLoggedIn: false });
+    setAuthView("login");
+    setLoginErr(null);
+    setSignupErr(null);
+    setSignupOk(null);
+    setEmail("");
+    setPass("");
+    setSignupName("");
+    setSignupEmail("");
+    setSignupPass("");
+    setSignupAccepted(false);
     closeAccountPanel();
     window.dispatchEvent(new Event("mcart:auth-updated"));
     router.replace("/");
