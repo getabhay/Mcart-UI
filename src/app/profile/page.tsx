@@ -37,14 +37,29 @@ function formatDate(value: string): string {
 function profileAge(createdAt: string): string {
   const created = new Date(createdAt);
   if (Number.isNaN(created.getTime())) return "-";
-  const now = Date.now();
-  const ageMs = Math.max(0, now - created.getTime());
-  const days = Math.floor(ageMs / (1000 * 60 * 60 * 24));
-  if (days >= 365) {
-    const years = ageMs / (1000 * 60 * 60 * 24 * 365);
-    return `${years.toFixed(1)} years`;
+  const now = new Date();
+  if (created > now) return "0 days";
+
+  let years = now.getFullYear() - created.getFullYear();
+  let months = now.getMonth() - created.getMonth();
+  let days = now.getDate() - created.getDate();
+
+  if (days < 0) {
+    const daysInPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    days += daysInPrevMonth;
+    months -= 1;
   }
-  return `${days} days`;
+  if (months < 0) {
+    months += 12;
+    years -= 1;
+  }
+
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} ${years === 1 ? "year" : "years"}`);
+  if (months > 0) parts.push(`${months} ${months === 1 ? "month" : "months"}`);
+  if (days > 0) parts.push(`${days} ${days === 1 ? "day" : "days"}`);
+
+  return parts.length > 0 ? parts.join(" ") : "0 days";
 }
 
 const SESSION_EXPIRED_MSG = APP_TEXT.common.sessionExpired;
@@ -319,6 +334,7 @@ export default function ProfilePage() {
   }
 
   async function onChangePassword() {
+    if (!canChangePassword) return;
     setPwdMsg(null);
     setPwdErr(null);
     if (!pwd.oldPassword.trim()) {
@@ -405,6 +421,7 @@ export default function ProfilePage() {
         : [],
     [profile]
   );
+  const canChangePassword = profile?.provider === "LOCAL";
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
@@ -466,18 +483,20 @@ export default function ProfilePage() {
               </>
             ) : null}
             {!isEditing && !showPwdForm ? (
-              <button
-                type="button"
-                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100 dark:hover:bg-white/10"
-                onClick={() => {
-                  setPwdErr(null);
-                  setPwdMsg(null);
-                  setShowPwdForm(true);
-                }}
-                disabled={loading || !profile}
-              >
-                {APP_TEXT.profilePage.button.changePassword}
-              </button>
+              canChangePassword ? (
+                <button
+                  type="button"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100 dark:hover:bg-white/10"
+                  onClick={() => {
+                    setPwdErr(null);
+                    setPwdMsg(null);
+                    setShowPwdForm(true);
+                  }}
+                  disabled={loading || !profile}
+                >
+                  {APP_TEXT.profilePage.button.changePassword}
+                </button>
+              ) : null
             ) : null}
           </div>
 
@@ -552,7 +571,7 @@ export default function ProfilePage() {
             </div>
           ) : null}
 
-          {showPwdForm ? (
+          {showPwdForm && canChangePassword ? (
             <div className="rounded-xl border border-gray-200 p-4 dark:border-white/10">
               <div className="grid gap-2">
                 <input

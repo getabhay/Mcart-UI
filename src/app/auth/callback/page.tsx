@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { persistAuth, socialCallback } from "@/lib/auth/client";
+import { decodeState, persistAuth, socialCallback } from "@/lib/auth/client";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -32,7 +32,8 @@ export default function AuthCallbackPage() {
       try {
         const result = await socialCallback({ code, state });
         if (cancelled) return;
-        persistAuth(result);
+        const provider = decodeState(state).provider;
+        persistAuth(result, provider);
         router.replace(result.returnTo || "/");
       } catch (e: unknown) {
         if (cancelled) return;

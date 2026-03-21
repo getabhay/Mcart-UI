@@ -4,8 +4,8 @@ import { APP_TEXT } from "@/lib/constants/appText";
 export type AuthProvider = "LOCAL" | "GOOGLE" | "FACEBOOK";
 
 type AuthApiResponse = {
-  auth: StoredAuth;
-  tokens: StoredTokens;
+  auth?: StoredAuth;
+  tokens?: StoredTokens;
   returnTo?: string;
 };
 
@@ -37,9 +37,55 @@ export async function socialCallback(input: { code: string; state: string }): Pr
   return postJson<AuthApiResponse>("/api/auth/social/callback", input);
 }
 
-export function persistAuth(data: AuthApiResponse): void {
+function isValidProvider(value: unknown): value is AuthProvider {
+  return value === "LOCAL" || value === "GOOGLE" || value === "FACEBOOK";
+}
+
+function decodeIdTokenClaims(idToken: string): { email: string | null; name: string | null } {
+  try {
+    const parts = idToken.split(".");
+    if (parts.length < 2) return { email: null, name: null };
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as { email?: unknown; name?: unknown };
+    return {
+      email: typeof payload.email === "string" ? payload.email : null,
+      name: typeof payload.name === "string" ? payload.name : null,
+    };
+  } catch {
+    return { email: null, name: null };
+  }
+}
+
+function resolveAuth(data: AuthApiResponse, fallbackProvider: AuthProvider): StoredAuth {
+  if (
+    data.auth?.isLoggedIn === true &&
+    typeof data.auth.email === "string" &&
+    typeof data.auth.displayName === "string" &&
+    isValidProvider(data.auth.provider)
+  ) {
+    return data.auth;
+  }
+
+  const claims = decodeIdTokenClaims(data.tokens?.idToken ?? "");
+  if (!claims.email) {
+    throw new Error(APP_TEXT.common.requestFailed);
+  }
+  return {
+    isLoggedIn: true,
+    email: claims.email,
+    displayName: claims.name || claims.email,
+    provider: fallbackProvider,
+  };
+}
+
+export function persistAuth(data: AuthApiResponse, fallbackProvider: AuthProvider = "LOCAL"): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(AUTH_KEY, JSON.stringify(data.auth));
+  if (!data.tokens?.idToken || !data.tokens.accessToken) {
+    throw new Error(APP_TEXT.common.requestFailed);
+  }
+  const auth = resolveAuth(data, fallbackProvider);
+  window.localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
   window.localStorage.setItem(AUTH_TOKEN_KEY, JSON.stringify(data.tokens));
   window.dispatchEvent(new Event("mcart:auth-updated"));
 }

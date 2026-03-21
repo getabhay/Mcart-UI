@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { SearchItem } from "@/features/search/types";
 
@@ -40,7 +40,42 @@ function isValidImageUrl(url: string | null | undefined): url is string {
 }
 
 function formatMoney(n: number): string {
-  return `₹${n.toFixed(0)}`;
+  return `Rs. ${n.toFixed(0)}`;
+}
+
+function getCollectionTheme(title: string): { sectionClass: string; badgeClass: string; badgeText: string } {
+  const lower = title.toLowerCase();
+
+  if (lower.includes("mens")) {
+    return {
+      sectionClass:
+        "border-cyan-200/80 bg-[linear-gradient(160deg,rgba(236,254,255,0.95)_0%,rgba(224,242,254,0.72)_100%)] dark:border-cyan-500/30 dark:bg-[linear-gradient(160deg,rgba(8,47,73,0.5)_0%,rgba(12,74,110,0.28)_100%)]",
+      badgeClass: "border-cyan-300/80 bg-cyan-100/90 text-cyan-800 dark:border-cyan-400/40 dark:bg-cyan-900/40 dark:text-cyan-100",
+      badgeText: "Men",
+    };
+  }
+
+  if (lower.includes("womens")) {
+    return {
+      sectionClass:
+        "border-rose-200/80 bg-[linear-gradient(160deg,rgba(255,241,242,0.95)_0%,rgba(255,228,230,0.72)_100%)] dark:border-rose-500/30 dark:bg-[linear-gradient(160deg,rgba(76,5,25,0.5)_0%,rgba(127,29,29,0.26)_100%)]",
+      badgeClass: "border-rose-300/80 bg-rose-100/90 text-rose-800 dark:border-rose-400/40 dark:bg-rose-900/40 dark:text-rose-100",
+      badgeText: "Women",
+    };
+  }
+
+  return {
+    sectionClass:
+      "border-amber-200/80 bg-[linear-gradient(160deg,rgba(255,251,235,0.95)_0%,rgba(254,243,199,0.72)_100%)] dark:border-amber-500/30 dark:bg-[linear-gradient(160deg,rgba(69,26,3,0.48)_0%,rgba(120,53,15,0.26)_100%)]",
+    badgeClass: "border-amber-300/80 bg-amber-100/90 text-amber-800 dark:border-amber-400/40 dark:bg-amber-900/40 dark:text-amber-100",
+    badgeText: "Collection",
+  };
+}
+
+function getVisibleCount(width: number): number {
+  if (width < 640) return 4;
+  if (width < 1024) return 6;
+  return 8;
 }
 
 function toHomeCards(item: SearchItem): HomeCard[] {
@@ -139,10 +174,11 @@ export default function Home() {
   const [rows, setRows] = useState<HomeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const rowSectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [visibleCount, setVisibleCount] = useState(8);
 
   useEffect(() => {
     let cancelled = false;
+
     async function load() {
       setLoading(true);
       setError(null);
@@ -156,11 +192,13 @@ export default function Home() {
           const body = col.slug
             ? { page: 0, size: 24, categorySlugs: [col.slug], sort: "POPULARITY" }
             : { page: 0, size: 24, q: col.queryTerm, sort: "POPULARITY" };
+
           const res = await fetch("/api/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
+
           const json = (await res.json().catch(() => ({}))) as { items?: SearchItem[] };
           const items = Array.isArray(json?.items) ? json.items : [];
           const cards = items.flatMap(toHomeCards);
@@ -175,10 +213,21 @@ export default function Home() {
         if (!cancelled) setLoading(false);
       }
     }
+
     load();
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    function syncVisibleCount() {
+      setVisibleCount(getVisibleCount(window.innerWidth));
+    }
+
+    syncVisibleCount();
+    window.addEventListener("resize", syncVisibleCount);
+    return () => window.removeEventListener("resize", syncVisibleCount);
   }, []);
 
   const hasRows = useMemo(() => rows.length > 0, [rows.length]);
@@ -207,69 +256,71 @@ export default function Home() {
       ) : null}
 
       <div className="space-y-7">
-        {rows.map((row) => (
-          <section
-            key={row.key}
-            data-row-key={row.key}
-            ref={(node) => {
-              rowSectionRefs.current[row.key] = node;
-            }}
-            className="space-y-3 scroll-mt-36"
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-gray-200/70 pb-2 dark:border-white/10">
-              <h2 className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-600 bg-clip-text text-lg font-black uppercase tracking-[0.06em] text-transparent dark:from-gray-100 dark:via-gray-200 dark:to-gray-400">
-                {row.title}
-              </h2>
-              <Link
-                href={`/search?q=${encodeURIComponent(row.categorySlug ?? row.queryTerm)}`}
-                className="text-xs font-bold uppercase tracking-[0.08em] text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-              >
-                Browse
-              </Link>
-            </div>
+        {rows.map((row) => {
+          const theme = getCollectionTheme(row.title);
 
-            <div className="grid grid-cols-2 gap-3 pb-1 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
-              {row.cards.slice(0, 10).map((c) => {
-                const href = c.variantId != null ? `/p/${encodeURIComponent(c.slug)}?variantId=${encodeURIComponent(String(c.variantId))}` : `/p/${encodeURIComponent(c.slug)}`;
-                const hasDiscount = c.mrp > c.sellingPrice;
-                const discount = hasDiscount ? Math.round(((c.mrp - c.sellingPrice) / c.mrp) * 100) : 0;
-                return (
-                  <Link
-                    key={`${row.key}-${c.id}-${c.variantId ?? "p"}`}
-                    href={href}
-                    className="rounded-2xl border border-gray-200/80 bg-white/90 p-2 shadow-[0_16px_32px_-22px_rgba(17,24,39,0.8)] transition hover:-translate-y-1 hover:shadow-[0_22px_42px_-24px_rgba(17,24,39,0.9)] dark:border-white/10 dark:bg-white/5"
-                  >
-                    {isValidImageUrl(c.thumbnailUrl) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.thumbnailUrl} alt={c.name} className="aspect-square w-full rounded-xl object-cover" />
-                    ) : (
-                      <div className="aspect-square w-full rounded-xl bg-gray-100 dark:bg-white/10" />
-                    )}
-
-                    <div className="mt-2 space-y-1">
-                      <div className="truncate text-xs font-extrabold text-gray-900 dark:text-gray-100">{c.brandName}</div>
-                      <div className="line-clamp-2 text-[12px] text-gray-900 dark:text-gray-200">{c.name}</div>
-                      <div className="flex flex-wrap items-baseline gap-1.5">
-                        <span className="text-sm font-extrabold text-gray-900 dark:text-gray-100">{formatMoney(c.sellingPrice)}</span>
-                        {hasDiscount ? <span className="text-[11px] text-gray-500 line-through dark:text-gray-400">{formatMoney(c.mrp)}</span> : null}
-                        {hasDiscount ? <span className="text-[11px] font-bold" style={{ color: "#ff905a" }}>({discount}% OFF)</span> : null}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-
-              {row.cards.length > 10 ? (
+          return (
+            <section key={row.key} data-row-key={row.key} className={`space-y-3 rounded-2xl border p-3 scroll-mt-36 sm:p-4 ${theme.sectionClass}`}>
+              <div className="flex items-center justify-between gap-3 border-b border-black/10 pb-2 dark:border-white/10">
+              <div className="flex items-center gap-2">
+                <h2 className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-600 bg-clip-text text-lg font-black uppercase tracking-[0.06em] text-transparent dark:from-gray-100 dark:via-gray-200 dark:to-gray-400">
+                  {row.title}
+                </h2>
+              </div>
                 <Link
                   href={`/search?q=${encodeURIComponent(row.categorySlug ?? row.queryTerm)}`}
-                  className="flex items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white/75 p-3 text-center text-base font-extrabold text-gray-800 transition hover:-translate-y-1 hover:shadow-md dark:border-white/20 dark:bg-white/5 dark:text-gray-100"
+                  className="text-xs font-bold uppercase tracking-[0.08em] text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
-                  View All
+                  Browse
                 </Link>
-              ) : null}
-            </div>
-          </section>
-        ))}
+              </div>
+
+              <div className="overflow-x-auto pb-2">
+                <div className="flex min-w-max gap-3">
+                  {row.cards.slice(0, visibleCount).map((c) => {
+                    const href = c.variantId != null ? `/p/${encodeURIComponent(c.slug)}?variantId=${encodeURIComponent(String(c.variantId))}` : `/p/${encodeURIComponent(c.slug)}`;
+                    const hasDiscount = c.mrp > c.sellingPrice;
+                    const discount = hasDiscount ? Math.round(((c.mrp - c.sellingPrice) / c.mrp) * 100) : 0;
+
+                    return (
+                      <Link
+                        key={`${row.key}-${c.id}-${c.variantId ?? "p"}`}
+                        href={href}
+                        className="w-40 shrink-0 rounded-2xl border border-gray-200/80 bg-white/90 p-2 shadow-[0_16px_32px_-22px_rgba(17,24,39,0.8)] transition hover:-translate-y-1 hover:shadow-[0_22px_42px_-24px_rgba(17,24,39,0.9)] dark:border-white/10 dark:bg-white/5 sm:w-44"
+                      >
+                        {isValidImageUrl(c.thumbnailUrl) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.thumbnailUrl} alt={c.name} className="aspect-square w-full rounded-xl object-cover" />
+                        ) : (
+                          <div className="aspect-square w-full rounded-xl bg-gray-100 dark:bg-white/10" />
+                        )}
+
+                        <div className="mt-2 space-y-1">
+                          <div className="truncate text-xs font-extrabold text-gray-900 dark:text-gray-100">{c.brandName}</div>
+                          <div className="line-clamp-2 text-[12px] text-gray-900 dark:text-gray-200">{c.name}</div>
+                          <div className="flex flex-wrap items-baseline gap-1.5">
+                            <span className="text-sm font-extrabold text-gray-900 dark:text-gray-100">{formatMoney(c.sellingPrice)}</span>
+                            {hasDiscount ? <span className="text-[11px] text-gray-500 line-through dark:text-gray-400">{formatMoney(c.mrp)}</span> : null}
+                            {hasDiscount ? <span className="text-[11px] font-bold" style={{ color: "#ff905a" }}>({discount}% OFF)</span> : null}
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+
+                  {row.cards.length > visibleCount ? (
+                    <Link
+                      href={`/search?q=${encodeURIComponent(row.categorySlug ?? row.queryTerm)}`}
+                      className="flex w-40 shrink-0 items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white/75 p-3 text-center text-sm font-extrabold text-gray-800 transition hover:-translate-y-1 hover:shadow-md dark:border-white/20 dark:bg-white/5 dark:text-gray-100 sm:w-44"
+                    >
+                      View More Products
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );
