@@ -9,6 +9,8 @@ export const APP_TEXT = {
       userNotConfirmed: "Your account is not confirmed yet. Please verify your email first.",
       backendUserNotFound: "No account found for this email. Please sign up first.",
       invalidCredentials: "Invalid email or password. Please try again.",
+      passwordPolicy:
+        "Password does not meet requirements.\nPassword requirements:\n- Contains at least 1 number\n- Contains at least 1 special character\n- Contains at least 1 uppercase letter\n- Contains at least 1 lowercase letter",
       signupFailed: "Signup failed",
       signinFailed: "Signin failed",
       loginFailed: "Login failed",
@@ -179,6 +181,9 @@ export function toFriendlyAuthError(message: string): string {
   }
   if (msg.includes("usernotconfirmedexception")) {
     return APP_TEXT.auth.errors.userNotConfirmed;
+  }
+  if (msg.includes("invalidpasswordexception") || msg.includes("password did not conform with policy")) {
+    return APP_TEXT.auth.errors.passwordPolicy;
   }
   if (msg.includes("user not found in backend database")) {
     return APP_TEXT.auth.errors.backendUserNotFound;

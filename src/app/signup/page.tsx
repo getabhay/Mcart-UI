@@ -122,7 +122,7 @@ export default function SignUpPage() {
             {APP_TEXT.signupPage.consent}
           </label>
 
-          {err ? <div className="text-xs text-red-600 dark:text-red-400">{err}</div> : null}
+          {err ? <div className="text-xs whitespace-pre-line text-red-600 dark:text-red-400">{err}</div> : null}
           {ok ? <div className="text-xs text-green-700 dark:text-green-400">{ok}</div> : null}
           {showLoginAction ? (
             <button
