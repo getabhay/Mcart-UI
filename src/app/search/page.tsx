@@ -283,6 +283,7 @@ export default function SearchPage() {
   const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([]);
   const [filterQuery, setFilterQuery] = useState<Record<string, string>>({});
   const [filterSearchOpen, setFilterSearchOpen] = useState<Record<string, boolean>>({});
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
   function scrollToResultsTop() {
@@ -389,16 +390,29 @@ export default function SearchPage() {
     return facetBrands.filter((b) => titleCasePreserveSpecials(b.label).toLowerCase().includes(qv));
   }, [facetBrands, filterQuery.brands]);
 
+  useEffect(() => {
+    if (!showFilters && mobileFiltersOpen) setMobileFiltersOpen(false);
+  }, [showFilters, mobileFiltersOpen]);
+
   return (
     <div className={`rounded-3xl border border-gray-200/80 bg-gradient-to-br from-white via-gray-50 to-cyan-50/50 p-3 shadow-[0_18px_45px_-35px_rgba(15,23,42,0.55)] dark:border-white/10 dark:bg-gradient-to-br dark:from-[#0b1118] dark:via-[#0f1724] dark:to-[#0f1a2b] dark:shadow-[0_18px_45px_-35px_rgba(0,0,0,0.9)] md:p-4 ${showFilters ? "grid gap-6 md:grid-cols-[280px_1fr]" : "space-y-4"}`}>
       {showFilters ? (
-        <aside className="sticky top-24 self-start max-h-[calc(100vh-6rem)] overflow-y-auto space-y-3 rounded-2xl border border-gray-200/70 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
+        <aside className={`${mobileFiltersOpen ? "fixed inset-x-3 bottom-3 top-24 z-[80] block" : "hidden"} self-start overflow-y-auto space-y-3 rounded-2xl border border-gray-200/70 bg-white/95 p-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#0b1118]/95 md:sticky md:top-24 md:z-auto md:block md:max-h-[calc(100vh-6rem)] md:bg-white/80 md:dark:bg-white/5`}>
           <div className="border-b border-gray-200 pb-2 dark:border-white/10">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xl font-semibold uppercase text-gray-900 dark:text-gray-100">Filters</div>
+              <div className="flex items-center gap-2">
+                <div className="text-xl font-semibold uppercase text-gray-900 dark:text-gray-100">Filters</div>
+                <button
+                  type="button"
+                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-white/5 dark:text-gray-100 md:hidden"
+                  onClick={() => setMobileFiltersOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
             {showSuggestionFilters ? (
               <div className="flex items-center gap-2">
-                <button type="button" className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-100" disabled={!unappliedSuggestions} onClick={() => { setSAppliedBrandSlugs([...sDraftBrandSlugs]); setSAppliedCategorySlugs([...sDraftCategorySlugs]); setDraftCategorySlugs(sDraftCategorySlugs); applyFilters(); setPage(0); }}>Apply</button>
+                <button type="button" className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-100" disabled={!unappliedSuggestions} onClick={() => { setSAppliedBrandSlugs([...sDraftBrandSlugs]); setSAppliedCategorySlugs([...sDraftCategorySlugs]); setDraftCategorySlugs(sDraftCategorySlugs); applyFilters(); setPage(0); setMobileFiltersOpen(false); }}>Apply</button>
                 <button
                   type="button"
                   className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-white/5 dark:text-gray-100"
@@ -412,6 +426,7 @@ export default function SearchPage() {
                     setDraftCategorySlugs([]);
                     clearAllAndApply();
                     setPage(0);
+                    setMobileFiltersOpen(false);
                   }}
                 >
                   Clear All
@@ -419,8 +434,8 @@ export default function SearchPage() {
               </div>
             ) : showServerFilters ? (
               <div className="flex items-center gap-2">
-                <button type="button" className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-100" disabled={!unappliedServer} onClick={() => applyFilters()}>Apply</button>
-                <button type="button" className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-white/5 dark:text-gray-100" onClick={() => { clearDraftCategory(); clearAllAndApply(); }}>Clear All</button>
+                <button type="button" className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-100" disabled={!unappliedServer} onClick={() => { applyFilters(); setMobileFiltersOpen(false); }}>Apply</button>
+                <button type="button" className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-white/5 dark:text-gray-100" onClick={() => { clearDraftCategory(); clearAllAndApply(); setMobileFiltersOpen(false); }}>Clear All</button>
               </div>
             ) : null}
             </div>
@@ -626,7 +641,7 @@ export default function SearchPage() {
 
       <main className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 md:p-4">
         <div ref={resultsTopRef} />
-        <div className="flex items-center justify-between gap-3">
+        <div className="hidden items-center justify-between gap-3 md:flex">
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             Products
             {!loading && !err ? <span className="ml-1 text-gray-600 dark:text-gray-300">({variantResultCount})</span> : null}
@@ -639,6 +654,30 @@ export default function SearchPage() {
               </select>
             </label>
           ) : null}
+        </div>
+        <div className="space-y-2 md:hidden">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            Products
+            {!loading && !err ? <span className="ml-1 text-gray-600 dark:text-gray-300">({variantResultCount})</span> : null}
+          </h1>
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              className="rounded-md border border-gray-200 bg-white px-3 py-1 text-sm font-semibold text-gray-800 dark:border-white/15 dark:bg-white/5 dark:text-gray-100"
+              onClick={() => setMobileFiltersOpen(true)}
+              disabled={!showFilters}
+            >
+              Filter
+            </button>
+            {hasRealResults ? (
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <span>Sort</span>
+                <select className="rounded-md border border-gray-200 bg-white px-2 py-1 text-sm dark:border-white/15 dark:bg-white/5 dark:text-gray-100" value={draft.sort ?? "POPULARITY"} onChange={(e) => setSort(e.target.value)}>
+                  {SORT_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </label>
+            ) : null}
+          </div>
         </div>
 
         {err ? <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">Error: {err}</div> : null}
@@ -722,6 +761,15 @@ export default function SearchPage() {
         {!loading && !err && !hasRealResults && !showingSuggestions && !browseMode ? <div className="rounded-md border border-gray-200 p-3 text-sm text-gray-700 dark:border-white/10 dark:text-gray-200">No results found for <span className="font-medium">{q}</span>.</div> : null}
       </main>
 
+      {showFilters && mobileFiltersOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-[70] bg-black/45 md:hidden"
+          aria-label="Close filters"
+          onClick={() => setMobileFiltersOpen(false)}
+        />
+      ) : null}
+
       <style>{`
         .dual-range::-webkit-slider-thumb {
           -webkit-appearance: none;
@@ -749,4 +797,3 @@ export default function SearchPage() {
     </div>
   );
 }
-

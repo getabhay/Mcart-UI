@@ -505,6 +505,7 @@ export default function Header() {
 
   /* auth forms */
   const [authView, setAuthView] = useState<"login" | "signup">("login");
+  const [mobileAuthOpen, setMobileAuthOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [signupName, setSignupName] = useState("");
@@ -533,6 +534,7 @@ export default function Header() {
       persistAuth(result);
       setAuth(readAuth());
       closeAccountPanel();
+      setMobileAuthOpen(false);
       setEmail("");
       setPass("");
     } catch (e: unknown) {
@@ -573,6 +575,7 @@ export default function Header() {
       setAuth(readAuth());
       setSignupOk("Account created and signed in.");
       closeAccountPanel();
+      setMobileAuthOpen(false);
       setSignupName("");
       setSignupEmail("");
       setSignupPass("");
@@ -619,6 +622,7 @@ export default function Header() {
     setSignupEmail("");
     setSignupPass("");
     setSignupAccepted(false);
+    setMobileAuthOpen(false);
     closeAccountPanel();
     window.dispatchEvent(new Event("mcart:auth-updated"));
     router.replace("/");
@@ -1372,17 +1376,35 @@ export default function Header() {
 
       <div className="border-t border-gray-200 bg-white dark:border-white/10 dark:bg-[#0E141B] md:hidden">
         <div className="mx-auto grid max-w-7xl grid-cols-3 gap-2 px-3 py-2">
-          <Link
-            href={auth.isLoggedIn ? "/profile" : "/signup"}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-900 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
-            onClick={() => {
-              closeAccountPanel();
-              setNavOpen(false);
-            }}
-          >
-            <IconUser />
-            <span>{auth.isLoggedIn ? "Profile" : APP_TEXT.headerAuth.tabs.login}</span>
-          </Link>
+          {auth.isLoggedIn ? (
+            <Link
+              href="/profile"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-900 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+              onClick={() => {
+                closeAccountPanel();
+                setNavOpen(false);
+              }}
+            >
+              <IconUser />
+              <span>Profile</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-900 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+              onClick={() => {
+                setNavOpen(false);
+                setAuthView("login");
+                setLoginErr(null);
+                setSignupErr(null);
+                setSignupOk(null);
+                setMobileAuthOpen((v) => !v);
+              }}
+            >
+              <IconUser />
+              <span>{APP_TEXT.headerAuth.tabs.login}</span>
+            </button>
+          )}
           <Link
             href="/wishlist"
             className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-900 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
@@ -1404,6 +1426,130 @@ export default function Header() {
           </Link>
         </div>
       </div>
+
+      {mobileAuthOpen && !auth.isLoggedIn ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[90] bg-black/45 md:hidden"
+            aria-label="Close login sheet"
+            onClick={() => setMobileAuthOpen(false)}
+          />
+          <div className="fixed inset-x-0 bottom-0 z-[100] rounded-t-2xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#0E141B] md:hidden">
+            <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-white/10 dark:bg-[#0B1118]">
+              <button
+                type="button"
+                className={`rounded-lg px-2 py-2 text-xs font-bold transition ${authView === "login" ? "bg-white text-gray-900 shadow-sm dark:bg-white dark:text-black" : "text-gray-700 hover:bg-white/60 dark:text-gray-200 dark:hover:bg-white/10"}`}
+                onClick={() => setAuthView("login")}
+              >
+                {APP_TEXT.headerAuth.tabs.login}
+              </button>
+              <button
+                type="button"
+                className={`rounded-lg px-2 py-2 text-xs font-bold transition ${authView === "signup" ? "bg-white text-gray-900 shadow-sm dark:bg-white dark:text-black" : "text-gray-700 hover:bg-white/60 dark:text-gray-200 dark:hover:bg-white/10"}`}
+                onClick={() => setAuthView("signup")}
+              >
+                {APP_TEXT.headerAuth.tabs.signup}
+              </button>
+            </div>
+
+            {authView === "login" ? (
+              <div className="space-y-2.5">
+                <input
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-300 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+                  placeholder="Email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <input
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-300 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+                  placeholder="Password"
+                  type="password"
+                  value={pass}
+                  onChange={(e) => setPass(e.target.value)}
+                />
+                {loginErr ? <div className="text-xs whitespace-pre-line text-red-600">{loginErr}</div> : null}
+                {signupOk ? <div className="text-xs text-green-700 dark:text-green-400">{signupOk}</div> : null}
+                <button
+                  type="button"
+                  className="w-full rounded-xl bg-gradient-to-r from-gray-900 to-black px-3 py-2.5 text-sm font-bold text-white shadow-sm hover:from-black hover:to-black disabled:cursor-not-allowed disabled:opacity-60 dark:from-white dark:to-white dark:text-black"
+                  onClick={doLogin}
+                  disabled={!loginReady || loginLoading}
+                >
+                  {loginLoading ? APP_TEXT.headerAuth.button.signingIn : APP_TEXT.headerAuth.button.login}
+                </button>
+                <div className="my-1 flex items-center gap-2">
+                  <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
+                  <span className="text-[11px] text-gray-600 dark:text-gray-300">{APP_TEXT.headerAuth.separator}</span>
+                  <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
+                </div>
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-[#d7e7ff] bg-gradient-to-r from-[#f8fbff] to-[#eef5ff] px-3 py-2.5 text-sm font-bold text-[#163b76] transition hover:from-[#f0f7ff] hover:to-[#e7f1ff] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#2d4367] dark:bg-[#0B1118] dark:text-[#d2e3ff] dark:hover:bg-[#101927]"
+                  onClick={() => doSocialSignIn("GOOGLE")}
+                  disabled={socialLoading !== null}
+                >
+                  {socialLoading === "GOOGLE"
+                    ? APP_TEXT.headerAuth.button.redirectingGoogle
+                    : APP_TEXT.headerAuth.button.continueGoogle}
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-[#d7e7ff] bg-gradient-to-r from-[#f8fbff] to-[#eef5ff] px-3 py-2.5 text-sm font-bold text-[#163b76] transition hover:from-[#f0f7ff] hover:to-[#e7f1ff] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#2d4367] dark:bg-[#0B1118] dark:text-[#d2e3ff] dark:hover:bg-[#101927]"
+                  onClick={() => doSocialSignIn("FACEBOOK")}
+                  disabled={socialLoading !== null}
+                >
+                  {socialLoading === "FACEBOOK"
+                    ? APP_TEXT.headerAuth.button.redirectingFacebook
+                    : APP_TEXT.headerAuth.button.continueFacebook}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                <input
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-300 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+                  placeholder="Name"
+                  value={signupName}
+                  onChange={(e) => setSignupName(e.target.value)}
+                />
+                <input
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-300 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+                  placeholder="Email"
+                  type="email"
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                />
+                <input
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-300 dark:border-white/10 dark:bg-[#0B1118] dark:text-gray-100"
+                  placeholder="Password"
+                  type="password"
+                  value={signupPass}
+                  onChange={(e) => setSignupPass(e.target.value)}
+                />
+                <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={signupAccepted}
+                    onChange={(e) => setSignupAccepted(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  {APP_TEXT.headerAuth.consent}
+                </label>
+                {signupErr ? <div className="text-xs whitespace-pre-line text-red-600">{signupErr}</div> : null}
+                <button
+                  type="button"
+                  className="w-full rounded-xl bg-gradient-to-r from-gray-900 to-black px-3 py-2.5 text-sm font-bold text-white shadow-sm hover:from-black hover:to-black disabled:cursor-not-allowed disabled:opacity-60 dark:from-white dark:to-white dark:text-black"
+                  onClick={doSignup}
+                  disabled={!signupReady || signupLoading}
+                >
+                  {signupLoading ? APP_TEXT.headerAuth.button.creating : APP_TEXT.headerAuth.button.submit}
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
 
       {/* Desktop categories bar + mega menu */}
       {!hideCategoryNav ? (
