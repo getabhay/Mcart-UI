@@ -42,3 +42,7 @@ This repo includes `amplify.yml` for Amplify Hosting. The recommended flow is:
 3. Enable branch protection in GitHub to require 1 approval + `CI / build` before merge.
 
 Amplify will auto-deploy on each merge to `main`.
+
+## Architecture
+
+- Deployment + CI/CD flow diagrams: [docs/architecture-diagrams.md](docs/architecture-diagrams.md)
